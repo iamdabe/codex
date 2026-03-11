@@ -1,5 +1,5 @@
 # Blazer Markdown Editor
-A lightweight (<550kb) ProseMirror-based javascript Markdown editor with slash commands, table editing, and JSInterop-friendly APIs. Developed as I needed a WYSIWYG markdown editor for Blazor but all I could find was react and vue components. Can be used standalone or authored into component for Blazor. Check the demo https://iamdabe.github.io/codex/  
+A lightweight (<550kb) ProseMirror-based javascript Markdown editor with slash commands, table editing, and JSInterop-friendly APIs. Developed as I needed a WYSIWYG markdown editor for Blazor but all I could find was react and vue components. Can be used standalone or authored into component for Blazor. Check the demo [https://iamdabe.github.io/Blazer-Markdown-Editor/  ](https://iamdabe.github.io/Blazer-Markdown-Editor/)
 
 ## Contents
 - **[Features](#features)**
