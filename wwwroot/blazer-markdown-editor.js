@@ -31977,6 +31977,9 @@
           if (!tableRange) return false;
           const table2 = buildTableNode(tableRange.headerCells, tableRange.aligns);
           const tr = state.tr.replaceWith(tableRange.from, tableRange.to, table2);
+          const afterTable = tr.mapping.map(tableRange.from) + table2.nodeSize;
+          tr.insert(afterTable, schema2.node("paragraph"));
+          tr.setSelection(TextSelection.near(tr.doc.resolve(afterTable + 1)));
           view.dispatch(tr);
           event.preventDefault();
           return true;
@@ -32041,8 +32044,12 @@
   }
   function compactLineBreak(state, dispatch) {
     const { $head } = state.selection;
-    if ($head.parent.type.name !== "paragraph") return false;
-    if (dispatch) dispatch(state.tr.insertText("\n"));
+    if ($head.parent.type.name === "code_block") {
+      if (dispatch) dispatch(state.tr.insertText("\n"));
+      return true;
+    }
+    if (!$head.parent.inlineContent) return false;
+    if (dispatch) dispatch(state.tr.replaceSelectionWith(schema2.nodes.hard_break.create()).scrollIntoView());
     return true;
   }
   var inlineMarkdownRules = inputRules({ rules: [
@@ -32091,6 +32098,11 @@
   }
   function tableToolbarPlugin() {
     let toolbarEl = null;
+    let blurHandler = null;
+    let focusHandler = null;
+    function hideToolbar() {
+      if (toolbarEl) toolbarEl.style.display = "none";
+    }
     function createToolbar() {
       const el = document.createElement("div");
       el.className = "table-toolbar";
@@ -32119,6 +32131,29 @@
       deleteRow,
       deleteTable
     };
+    function positionForSelection(view) {
+      if (!view.hasFocus()) {
+        hideToolbar();
+        return;
+      }
+      const $h = view.state.selection.$head;
+      let inTbl = false, tblDom = null;
+      for (let d = $h.depth; d > 0; d--) {
+        if ($h.node(d).type.name === "table") {
+          inTbl = true;
+          tblDom = view.nodeDOM($h.before(d));
+          break;
+        }
+      }
+      if (!inTbl || !tblDom) {
+        hideToolbar();
+        return;
+      }
+      const r = tblDom.getBoundingClientRect();
+      toolbarEl.style.display = "flex";
+      toolbarEl.style.left = r.left + "px";
+      toolbarEl.style.top = r.top - toolbarEl.offsetHeight - 6 + window.scrollY + "px";
+    }
     return new Plugin({
       view(editorView) {
         toolbarEl = createToolbar();
@@ -32130,27 +32165,104 @@
             if (c) c(editorView.state, editorView.dispatch);
           }
         });
+        blurHandler = () => hideToolbar();
+        focusHandler = () => requestAnimationFrame(() => positionForSelection(editorView));
+        editorView.dom.addEventListener("focusout", blurHandler);
+        editorView.dom.addEventListener("focusin", focusHandler);
         return {
           update(view) {
-            const $h = view.state.selection.$head;
-            let inTbl = false, tblDom = null;
-            for (let d = $h.depth; d > 0; d--) {
-              if ($h.node(d).type.name === "table") {
-                inTbl = true;
-                tblDom = view.nodeDOM($h.before(d));
-                break;
-              }
-            }
-            if (!inTbl || !tblDom) {
-              toolbarEl.style.display = "none";
-              return;
-            }
-            const r = tblDom.getBoundingClientRect();
-            toolbarEl.style.display = "flex";
-            toolbarEl.style.left = r.left + "px";
-            toolbarEl.style.top = r.top - toolbarEl.offsetHeight - 6 + window.scrollY + "px";
+            positionForSelection(view);
           },
           destroy() {
+            if (blurHandler) editorView.dom.removeEventListener("focusout", blurHandler);
+            if (focusHandler) editorView.dom.removeEventListener("focusin", focusHandler);
+            if (toolbarEl) toolbarEl.remove();
+          }
+        };
+      }
+    });
+  }
+  function linkToolbarPlugin() {
+    let toolbarEl = null;
+    let currentHref = "";
+    let blurHandler = null;
+    let focusHandler = null;
+    function hideToolbar() {
+      if (toolbarEl) toolbarEl.style.display = "none";
+      currentHref = "";
+    }
+    function getActiveLinkHref(state) {
+      const { selection } = state;
+      const linkMarkType = schema2.marks.link;
+      if (!linkMarkType) return null;
+      if (selection.empty) {
+        const { $from } = selection;
+        const marks = $from.marks();
+        const direct = marks.find((m) => m.type === linkMarkType);
+        if ((direct == null ? void 0 : direct.attrs) && direct.attrs.href) return direct.attrs.href;
+        const before = $from.nodeBefore;
+        if (before == null ? void 0 : before.marks) {
+          const m = before.marks.find((mark) => mark.type === linkMarkType);
+          if ((m == null ? void 0 : m.attrs) && m.attrs.href) return m.attrs.href;
+        }
+        const after = $from.nodeAfter;
+        if (after == null ? void 0 : after.marks) {
+          const m = after.marks.find((mark) => mark.type === linkMarkType);
+          if ((m == null ? void 0 : m.attrs) && m.attrs.href) return m.attrs.href;
+        }
+        return null;
+      }
+      let href = null;
+      state.doc.nodesBetween(selection.from, selection.to, (node) => {
+        if (!node.isText || !node.marks || href) return;
+        const mark = node.marks.find((m) => m.type === linkMarkType);
+        if ((mark == null ? void 0 : mark.attrs) && mark.attrs.href) href = mark.attrs.href;
+      });
+      return href;
+    }
+    function createToolbar() {
+      const el = document.createElement("div");
+      el.className = "link-toolbar";
+      el.innerHTML = `<button type="button" data-cmd="openLink">Open Link</button>`;
+      el.style.display = "none";
+      document.body.appendChild(el);
+      el.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        if (!currentHref) return;
+        window.open(currentHref, "_blank", "noopener,noreferrer");
+      });
+      return el;
+    }
+    function positionForSelection(view) {
+      if (!view.hasFocus()) {
+        hideToolbar();
+        return;
+      }
+      const href = getActiveLinkHref(view.state);
+      if (!href) {
+        hideToolbar();
+        return;
+      }
+      currentHref = href;
+      const coords = view.coordsAtPos(view.state.selection.from);
+      toolbarEl.style.display = "flex";
+      toolbarEl.style.left = coords.left + "px";
+      toolbarEl.style.top = coords.top - toolbarEl.offsetHeight - 6 + window.scrollY + "px";
+    }
+    return new Plugin({
+      view(editorView) {
+        toolbarEl = createToolbar();
+        blurHandler = () => hideToolbar();
+        focusHandler = () => requestAnimationFrame(() => positionForSelection(editorView));
+        editorView.dom.addEventListener("focusout", blurHandler);
+        editorView.dom.addEventListener("focusin", focusHandler);
+        return {
+          update(view) {
+            positionForSelection(view);
+          },
+          destroy() {
+            if (blurHandler) editorView.dom.removeEventListener("focusout", blurHandler);
+            if (focusHandler) editorView.dom.removeEventListener("focusin", focusHandler);
             if (toolbarEl) toolbarEl.remove();
           }
         };
@@ -32224,13 +32336,16 @@
         if (!d) return true;
         const hdr = () => schema2.nodes.table_header.createAndFill();
         const cel = () => schema2.nodes.table_cell.createAndFill();
-        d(s.tr.replaceSelectionWith(
-          schema2.nodes.table.create(null, [
-            schema2.nodes.table_row.create(null, [hdr(), hdr(), hdr()]),
-            schema2.nodes.table_row.create(null, [cel(), cel(), cel()]),
-            schema2.nodes.table_row.create(null, [cel(), cel(), cel()])
-          ])
-        ));
+        const table2 = schema2.nodes.table.create(null, [
+          schema2.nodes.table_row.create(null, [hdr(), hdr(), hdr()]),
+          schema2.nodes.table_row.create(null, [cel(), cel(), cel()]),
+          schema2.nodes.table_row.create(null, [cel(), cel(), cel()])
+        ]);
+        const tr = s.tr.replaceSelectionWith(table2);
+        const afterTable = tr.selection.from;
+        tr.insert(afterTable, schema2.node("paragraph"));
+        tr.setSelection(TextSelection.near(tr.doc.resolve(afterTable + 1)));
+        d(tr.scrollIntoView());
         return true;
       }
     }
@@ -32277,6 +32392,8 @@
           execute(view, items[+el.dataset.i]);
         });
       });
+      const activeEl = menuEl.querySelector(".slash-menu-item.active");
+      if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
     }
     function execute(view, item) {
       view.dispatch(view.state.tr.delete(slashPos, view.state.selection.from));
@@ -32381,7 +32498,8 @@
         "Mod-z": undo,
         "Shift-Mod-z": redo,
         "Mod-y": redo,
-        "Mod-Enter": chainCommands(exitCode, compactLineBreak),
+        "Mod-Enter": compactLineBreak,
+        "Shift-Enter": compactLineBreak,
         Enter: chainCommands(
           newlineInCode,
           tableCellEnterCommand,
@@ -32400,6 +32518,7 @@
       tableEditing(),
       keymap({ Tab: goToNextCell(1), "Shift-Tab": goToNextCell(-1) }),
       tableToolbarPlugin(),
+      linkToolbarPlugin(),
       pastePlugin()
     ];
   }

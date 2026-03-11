@@ -53,3 +53,85 @@
   padding: 4px 16px;
   color: #555;
 }
+
+.table-toolbar,
+.link-toolbar {
+  position: absolute;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  padding: 4px;
+  display: flex;
+  gap: 2px;
+}
+.table-toolbar button,
+.link-toolbar button {
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #333;
+  font-family: inherit;
+}
+.table-toolbar button:hover,
+.link-toolbar button:hover {
+  background: #f0f0ff;
+}
+.table-toolbar .sep {
+  width: 1px;
+  background: #e0e0e0;
+  margin: 2px 3px;
+}
+.table-toolbar .danger:hover {
+  background: #fff0f0;
+  color: #c00;
+}
+
+.slash-menu {
+  position: absolute;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.slash-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.slash-menu-item:hover,
+.slash-menu-item.active {
+  background: #f0f0ff;
+}
+.slash-menu-item .icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+  border-radius: 5px;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+.slash-menu-item .label {
+  font-weight: 500;
+}
+.slash-menu-item .desc {
+  font-size: 12px;
+  color: #888;
+}
