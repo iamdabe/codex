@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - samples/blazer-editor-test/**
+      - samples/**
       - wwwroot/**
       - .github/workflows/github-pages.yml
   workflow_dispatch:
@@ -37,7 +37,7 @@ jobs:
           mkdir -p _site
 
           # Start with the sample page as the site root.
-          cp samples/blazer-editor-test/index.html _site/index.html
+          cp samples/index.html _site/index.html
 
           # Rewrite sample-relative references so they resolve on GitHub Pages.
           sed -i 's|../../wwwroot/|./wwwroot/|g' _site/index.html
