@@ -1,4 +1,4 @@
-name: Publish Test Sample
+name: Publish Sample to GitHub Pages
 
 on:
   push:

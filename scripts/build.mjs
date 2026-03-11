@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const licenseHeader = `// Copyright (c) 2026 David Walker\n// Licensed under the MIT License.\n\n`;
+const licenseHeader = `/* Copyright (c) 2026 David Walker\n   Licensed under the MIT License. */\n\n`;
 
 mkdirSync("wwwroot", { recursive: true });
 const cssContent = readFileSync("src/blazer-markdown-editor.css", "utf8");

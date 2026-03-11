@@ -1,6 +1,5 @@
 .ProseMirror {
   background: #fff;
-  border: 1px solid #d0d0d0;
   border-radius: 6px;
   padding: 16px 20px;
   min-height: 240px;
@@ -8,7 +7,6 @@
   line-height: 1.6;
   outline: none;
 }
-.ProseMirror:focus { border-color: #999; }
 
 .ProseMirror table { border-collapse: collapse; margin: 12px 0; width: auto; }
 .ProseMirror td, .ProseMirror th {
