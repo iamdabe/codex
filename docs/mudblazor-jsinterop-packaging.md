@@ -73,4 +73,4 @@ This keeps lifecycle ownership clear and avoids leaking ProseMirror internals in
 
 ## Why the prototype import map was adjusted
 
-For local prototyping, import maps are fine. To reduce dependency sprawl and manual transitive pins, this repo now uses `?bundle` URLs for direct imports. In production, prefer your own package lock + local bundling over CDN-resolved transitive dependency trees.
+For local prototyping, import maps are fine and this prototype keeps explicit pinned CDN imports for compatibility. In production, prefer your own package lock + local bundling over CDN-resolved dependency trees.
