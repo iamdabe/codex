@@ -111,6 +111,46 @@
       button { width: calc(50% - 3px); }
       button.primary { width: 100%; order: -1; }
     }
+
+    /* ── Floating table toolbar ── */
+    .table-toolbar {
+      position: absolute; z-index: 100;
+      background: #fff; border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.1);
+      padding: 4px; display: flex; gap: 2px;
+    }
+    .table-toolbar button {
+      padding: 4px 8px; border: none; background: none;
+      border-radius: 4px; cursor: pointer; font-size: 12px;
+      white-space: nowrap; color: #333; font-family: inherit;
+      width: auto;
+    }
+    .table-toolbar button:hover { background: #f0f0ff; }
+    .table-toolbar .sep { width: 1px; background: #e0e0e0; margin: 2px 3px; }
+    .table-toolbar .danger:hover { background: #fff0f0; color: #c00; }
+
+    /* ── Slash menu ── */
+    .slash-menu {
+      position: absolute; z-index: 100;
+      background: #fff; border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.12);
+      padding: 4px; min-width: 220px;
+      max-height: 320px; overflow-y: auto;
+    }
+    .slash-menu-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 14px;
+    }
+    .slash-menu-item:hover, .slash-menu-item.active { background: #f0f0ff; }
+    .slash-menu-item .icon {
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      background: #f0f0f0; border-radius: 5px; font-size: 15px; flex-shrink: 0;
+    }
+    .slash-menu-item .label { font-weight: 500; }
+    .slash-menu-item .desc  { font-size: 12px; color: #888; }
   </style>
 </head>
 <body>
@@ -130,25 +170,69 @@
       <textarea id="markdownView" spellcheck="false"></textarea>
     </div>
 
-    <p id="status" class="status">Ready.</p>
+    <p id="status" class="status">
+      Ready. Type <code>/</code> for commands &middot;
+      <code>**bold**</code> &middot; <code>*italic*</code> &middot;
+      <code># </code> heading &middot; <code>&gt; </code> quote &middot;
+      <code>* </code> list &middot; <code>---</code> divider &middot;
+      Tables: type header + <code>| --- | --- |</code> then Enter
+    </p>
   </main>
 
   <script src="../../wwwroot/blazer-markdown-editor.js"></script>
   <script>
-    const initialMarkdown = `# Sample Test Page
+    const initialMarkdown = `# Markdown Editor
 
-This page exercises the built **Blazer Markdown Editor** bundle from the repository.
+This is a **rich text** markdown editor with full markdown support.
 
-## What to test
+## Text Formatting
 
-- Basic markdown editing
-- Table conversion using a separator row
-- Markdown import/export from Code mode
+**Bold text**, *italic text*, and \`inline code\`.
 
-| Feature | Expected |
-| --- | --- |
-| Bold | Works with keyboard input |
-| Table | Converts from markdown rows |
+You *can **combine** them* freely.
+
+## Lists
+
+### Unordered
+
+* Item 1
+* Item 2
+    * Nested item a
+    * Nested item b
+* Item 3
+
+### Ordered
+
+1. First
+2. Second
+3. Third
+    1. Sub-item
+    2. Sub-item
+
+## Blockquotes
+
+> Markdown is a lightweight markup language with plain-text-formatting syntax.
+>
+> > This is a **nested** blockquote inside the outer one.
+
+## Table
+
+| Left columns  | Center column | Right column  |
+| ------------- |:-------------:| -------------:|
+| left foo      | center foo    | right foo     |
+| left bar      | center bar    | right bar     |
+| left baz      | center baz    | right baz     |
+
+## Code Block
+
+\`\`\`
+let message = 'Hello world';
+alert(message);
+\`\`\`
+
+---
+
+Type \`/\` at the start of a line to open the **slash command menu**!
 `;
 
     const statusEl = document.getElementById("status");

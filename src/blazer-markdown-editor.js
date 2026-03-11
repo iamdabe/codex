@@ -1,5 +1,5 @@
-import { Schema } from "prosemirror-model";
-import { EditorState, Plugin, TextSelection } from "prosemirror-state";
+import { Schema, Slice } from "prosemirror-model";
+import { EditorState, Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { keymap } from "prosemirror-keymap";
 import { history, undo, redo } from "prosemirror-history";
@@ -21,13 +21,23 @@ import {
   columnResizing,
   tableEditing,
   goToNextCell,
+  addColumnAfter,
+  addColumnBefore,
+  deleteColumn,
+  addRowAfter,
+  addRowBefore,
+  deleteRow,
+  deleteTable,
 } from "prosemirror-tables";
 import {
+  setBlockType,
+  wrapIn,
   chainCommands,
   exitCode,
   newlineInCode,
   baseKeymap,
 } from "prosemirror-commands";
+import { wrapInList } from "prosemirror-schema-list";
 import markdownit from "markdown-it";
 
 const tNodes = tableNodes({
@@ -98,6 +108,10 @@ function inlineNodes(tokens) {
     else if (t.type === "link_open") marks.push(schema.marks.link.create({ href: (t.attrGet && t.attrGet("href")) || "", title: (t.attrGet && t.attrGet("title")) || "" }));
     else if (t.type === "link_close") marks.splice(marks.findIndex((m) => m.type === schema.marks.link), 1);
     else if (t.type === "softbreak") out.push(schema.text("\n", marks.slice()));
+    else if (t.type === "hardbreak") out.push(schema.node("hard_break"));
+    else if (t.type === "image") out.push(schema.node("image", {
+      src: (t.attrGet && t.attrGet("src")) || "", alt: t.content || "",
+      title: (t.attrGet && t.attrGet("title")) || null }));
   }
   return out;
 }
@@ -118,6 +132,7 @@ function parseMarkdown(src) {
     if (t.type === "table_open") { stack.push({ type: "table", children: [] }); continue; }
     if (t.type === "tr_open") { stack.push({ type: "table_row", children: [] }); continue; }
     if (t.type === "thead_open" || t.type === "tbody_open") continue;
+    if (t.type === "thead_close" || t.type === "tbody_close") continue;
     if (t.type === "th_open" || t.type === "td_open") {
       const sty = (t.attrGet && t.attrGet("style")) || "";
       const m = sty.match(/text-align:\s*(\w+)/);
@@ -230,6 +245,226 @@ function tableInputRulePlugin() {
   });
 }
 
+// ── Inline Markdown Input Rules ──
+const inlineMarkdownRules = inputRules({ rules: [
+  // **bold**
+  new InputRule(/\*\*([^\s*](?:[^*]*[^\s*])?)\*\*$/, (state, match, start, end) => {
+    if (!match[1]) return null;
+    return state.tr.replaceWith(start, end, schema.text(match[1], [schema.marks.strong.create()]));
+  }),
+  // __bold__
+  new InputRule(/__([^\s_](?:[^_]*[^\s_])?)__$/, (state, match, start, end) => {
+    if (!match[1]) return null;
+    return state.tr.replaceWith(start, end, schema.text(match[1], [schema.marks.strong.create()]));
+  }),
+  // *italic*
+  new InputRule(/(?:^|[^*])\*([^\s*](?:[^*]*[^\s*])?)\*$/, (state, match, start, end) => {
+    if (!match[1]) return null;
+    const from = start + (match[0].length > match[1].length + 2 ? 1 : 0);
+    return state.tr.replaceWith(from, end, schema.text(match[1], [schema.marks.em.create()]));
+  }),
+  // _italic_
+  new InputRule(/(?:^|[^_])_([^\s_](?:[^_]*[^\s_])?)_$/, (state, match, start, end) => {
+    if (!match[1]) return null;
+    const from = start + (match[0].length > match[1].length + 2 ? 1 : 0);
+    return state.tr.replaceWith(from, end, schema.text(match[1], [schema.marks.em.create()]));
+  }),
+  // `code`
+  new InputRule(/`([^`]+)`$/, (state, match, start, end) => {
+    if (!match[1]) return null;
+    return state.tr.replaceWith(start, end, schema.text(match[1], [schema.marks.code.create()]));
+  }),
+]});
+
+// ── Paste Handler ──
+function pastePlugin() {
+  return new Plugin({
+    props: {
+      handlePaste(view, event) {
+        const text = event.clipboardData && event.clipboardData.getData("text/plain");
+        if (!text) return false;
+        const looksLikeMarkdown =
+          /^#{1,6}\s/m.test(text) ||
+          /\*\*[^*]+\*\*/m.test(text) ||
+          /^\s*[-*+]\s/m.test(text) ||
+          /^\s*\d+\.\s/m.test(text) ||
+          /^\s*>/m.test(text) ||
+          /\|.+\|.+\|/m.test(text) ||
+          /^```/m.test(text) ||
+          /^---\s*$/m.test(text);
+        if (!looksLikeMarkdown) return false;
+        const doc = parseMarkdown(text);
+        view.dispatch(view.state.tr.replaceSelection(new Slice(doc.content, 0, 0)));
+        return true;
+      }
+    }
+  });
+}
+
+// ── Floating Table Toolbar ──
+function tableToolbarPlugin() {
+  let toolbarEl = null;
+  function createToolbar() {
+    const el = document.createElement("div");
+    el.className = "table-toolbar";
+    el.innerHTML = `
+      <button data-cmd="addColumnBefore" title="Insert column left">\u21d0 Col</button>
+      <button data-cmd="addColumnAfter"  title="Insert column right">Col \u21d2</button>
+      <div class="sep"></div>
+      <button data-cmd="addRowBefore" title="Insert row above">\u21d1 Row</button>
+      <button data-cmd="addRowAfter"  title="Insert row below">Row \u21d3</button>
+      <div class="sep"></div>
+      <button data-cmd="deleteColumn" class="danger" title="Delete column">\u2715 Col</button>
+      <button data-cmd="deleteRow"    class="danger" title="Delete row">\u2715 Row</button>
+      <div class="sep"></div>
+      <button data-cmd="deleteTable"  class="danger" title="Delete table">\u2715 Table</button>
+    `;
+    el.style.display = "none";
+    document.body.appendChild(el);
+    return el;
+  }
+  const cmds = { addColumnBefore, addColumnAfter, deleteColumn,
+                 addRowBefore, addRowAfter, deleteRow, deleteTable };
+  return new Plugin({
+    view(editorView) {
+      toolbarEl = createToolbar();
+      toolbarEl.addEventListener("mousedown", e => {
+        e.preventDefault();
+        const btn = e.target.closest("button[data-cmd]");
+        if (btn) { const c = cmds[btn.dataset.cmd]; if (c) c(editorView.state, editorView.dispatch); }
+      });
+      return {
+        update(view) {
+          const $h = view.state.selection.$head;
+          let inTbl = false, tblDom = null;
+          for (let d = $h.depth; d > 0; d--) {
+            if ($h.node(d).type.name === "table") {
+              inTbl = true;
+              tblDom = view.nodeDOM($h.before(d));
+              break;
+            }
+          }
+          if (!inTbl || !tblDom) { toolbarEl.style.display = "none"; return; }
+          const r = tblDom.getBoundingClientRect();
+          toolbarEl.style.display = "flex";
+          toolbarEl.style.left = r.left + "px";
+          toolbarEl.style.top  = (r.top - toolbarEl.offsetHeight - 6 + window.scrollY) + "px";
+        },
+        destroy() { if (toolbarEl) toolbarEl.remove(); }
+      };
+    }
+  });
+}
+
+// ── Slash Command Menu ──
+const slashKey = new PluginKey("slashMenu");
+const SLASH_ITEMS = [
+  { label:"Heading 1",     icon:"H1", desc:"Big section heading",
+    action:(s,d) => setBlockType(schema.nodes.heading,{level:1})(s,d) },
+  { label:"Heading 2",     icon:"H2", desc:"Medium heading",
+    action:(s,d) => setBlockType(schema.nodes.heading,{level:2})(s,d) },
+  { label:"Heading 3",     icon:"H3", desc:"Small heading",
+    action:(s,d) => setBlockType(schema.nodes.heading,{level:3})(s,d) },
+  { label:"Paragraph",     icon:"\u00b6",  desc:"Plain text",
+    action:(s,d) => setBlockType(schema.nodes.paragraph)(s,d) },
+  { label:"Bullet List",   icon:"\u2022",  desc:"Unordered list",
+    action:(s,d) => wrapInList(schema.nodes.bullet_list)(s,d) },
+  { label:"Numbered List", icon:"1.", desc:"Ordered list",
+    action:(s,d) => wrapInList(schema.nodes.ordered_list)(s,d) },
+  { label:"Blockquote",    icon:"\u275d",  desc:"Quote block",
+    action:(s,d) => wrapIn(schema.nodes.blockquote)(s,d) },
+  { label:"Code Block",    icon:"<>", desc:"Fenced code block",
+    action:(s,d) => setBlockType(schema.nodes.code_block)(s,d) },
+  { label:"Divider",       icon:"\u2015",  desc:"Horizontal rule",
+    action:(s,d) => { if(d) d(s.tr.replaceSelectionWith(schema.nodes.horizontal_rule.create())); return true; } },
+  { label:"Table",         icon:"\u25a6",  desc:"Insert 3\u00d73 table",
+    action:(s,d) => {
+      if (!d) return true;
+      const hdr = () => schema.nodes.table_header.createAndFill();
+      const cel = () => schema.nodes.table_cell.createAndFill();
+      d(s.tr.replaceSelectionWith(
+        schema.nodes.table.create(null,[
+          schema.nodes.table_row.create(null,[hdr(),hdr(),hdr()]),
+          schema.nodes.table_row.create(null,[cel(),cel(),cel()]),
+          schema.nodes.table_row.create(null,[cel(),cel(),cel()]),
+        ])
+      ));
+      return true;
+    } },
+];
+
+function slashMenuPlugin() {
+  let menuEl = null, activeIdx = 0, filterText = "", slashPos = null;
+  const filtered = () => {
+    const q = filterText.toLowerCase();
+    return SLASH_ITEMS.filter(it => it.label.toLowerCase().includes(q));
+  };
+  function destroy() {
+    if (menuEl) { menuEl.remove(); menuEl = null; }
+    slashPos = null; filterText = ""; activeIdx = 0;
+  }
+  function render(view) {
+    const items = filtered();
+    if (!items.length) { destroy(); return; }
+    if (!menuEl) { menuEl = document.createElement("div"); menuEl.className = "slash-menu"; document.body.appendChild(menuEl); }
+    const coords = view.coordsAtPos(view.state.selection.from);
+    menuEl.style.left = coords.left + "px";
+    menuEl.style.top  = (coords.bottom + 4) + "px";
+    activeIdx = Math.min(activeIdx, items.length - 1);
+    menuEl.innerHTML = items.map((it, i) =>
+      `<div class="slash-menu-item${i===activeIdx?" active":""}" data-i="${i}">
+        <span class="icon">${it.icon}</span>
+        <span><span class="label">${it.label}</span><br><span class="desc">${it.desc}</span></span>
+      </div>`
+    ).join("");
+    menuEl.querySelectorAll(".slash-menu-item").forEach(el => {
+      el.addEventListener("mousedown", e => { e.preventDefault(); execute(view, items[+el.dataset.i]); });
+    });
+  }
+  function execute(view, item) {
+    view.dispatch(view.state.tr.delete(slashPos, view.state.selection.from));
+    destroy();
+    item.action(view.state, view.dispatch, view);
+    view.focus();
+  }
+  return new Plugin({
+    key: slashKey,
+    props: {
+      handleKeyDown(view, e) {
+        if (!menuEl) return false;
+        const items = filtered();
+        if (e.key==="ArrowDown") { e.preventDefault(); activeIdx=(activeIdx+1)%items.length; render(view); return true; }
+        if (e.key==="ArrowUp")   { e.preventDefault(); activeIdx=(activeIdx-1+items.length)%items.length; render(view); return true; }
+        if (e.key==="Enter")     { e.preventDefault(); if(items[activeIdx]) execute(view,items[activeIdx]); return true; }
+        if (e.key==="Escape")    { destroy(); return true; }
+        return false;
+      },
+      handleTextInput(view, from, to, text) {
+        if (text === "/" && !menuEl) {
+          const $f = view.state.doc.resolve(from);
+          const before = $f.parent.textBetween(0, $f.parentOffset, null, "\ufffc");
+          if (!before.length || /\s$/.test(before))
+            setTimeout(() => { slashPos = from; filterText = ""; activeIdx = 0; render(view); }, 0);
+        }
+        return false;
+      },
+    },
+    view() {
+      return {
+        update(view) {
+          if (!menuEl || slashPos === null) return;
+          const { from } = view.state.selection;
+          if (from <= slashPos) { destroy(); return; }
+          filterText = view.state.doc.textBetween(slashPos + 1, from, "", "\ufffc");
+          render(view);
+        },
+        destroy() { if (menuEl) menuEl.remove(); }
+      };
+    }
+  });
+}
+
+// ── Code Block Escape ──
 function codeBlockEscapeKeymap() {
   return keymap({
     Enter: (state, dispatch) => {
@@ -251,11 +486,31 @@ function codeBlockEscapeKeymap() {
       }
       return true;
     },
+    ArrowDown: (state, dispatch) => {
+      const { $head } = state.selection;
+      if ($head.parent.type.name !== "code_block") return false;
+      const cursorAtEnd = $head.parentOffset === $head.parent.content.size;
+      if (!cursorAtEnd) return false;
+      const after = $head.after($head.depth);
+      if (after < state.doc.content.size) {
+        if (dispatch) dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(after + 1))));
+        return true;
+      } else {
+        if (dispatch) {
+          const tr = state.tr;
+          tr.insert(state.doc.content.size, schema.node("paragraph"));
+          tr.setSelection(TextSelection.near(tr.doc.resolve(tr.doc.content.size - 1)));
+          dispatch(tr);
+        }
+        return true;
+      }
+    },
   });
 }
 
 function createPlugins() {
   return [
+    slashMenuPlugin(),
     tableInputRulePlugin(),
     history(),
     dropCursor(),
@@ -268,10 +523,13 @@ function createPlugins() {
     }),
     keymap(baseKeymap),
     buildBlockInputRules(),
+    inlineMarkdownRules,
     codeBlockEscapeKeymap(),
     columnResizing(),
     tableEditing(),
     keymap({ Tab: goToNextCell(1), "Shift-Tab": goToNextCell(-1) }),
+    tableToolbarPlugin(),
+    pastePlugin(),
   ];
 }
 
