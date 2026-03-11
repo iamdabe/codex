@@ -31616,6 +31616,89 @@
     }
     return tr;
   }
+  function splitListItem(itemType, itemAttrs) {
+    return function(state, dispatch) {
+      let { $from, $to, node: node2 } = state.selection;
+      if (node2 && node2.isBlock || $from.depth < 2 || !$from.sameParent($to))
+        return false;
+      let grandParent = $from.node(-1);
+      if (grandParent.type != itemType)
+        return false;
+      if ($from.parent.content.size == 0 && $from.node(-1).childCount == $from.indexAfter(-1)) {
+        if ($from.depth == 3 || $from.node(-3).type != itemType || $from.index(-2) != $from.node(-2).childCount - 1)
+          return false;
+        if (dispatch) {
+          let wrap2 = Fragment.empty;
+          let depthBefore = $from.index(-1) ? 1 : $from.index(-2) ? 2 : 3;
+          for (let d = $from.depth - depthBefore; d >= $from.depth - 3; d--)
+            wrap2 = Fragment.from($from.node(d).copy(wrap2));
+          let depthAfter = $from.indexAfter(-1) < $from.node(-2).childCount ? 1 : $from.indexAfter(-2) < $from.node(-3).childCount ? 2 : 3;
+          wrap2 = wrap2.append(Fragment.from(itemType.createAndFill()));
+          let start = $from.before($from.depth - (depthBefore - 1)), end = $from.after($from.depth - (depthAfter - 1));
+          let tr = state.tr.replace(start, end, new Slice(wrap2, 4 - depthBefore, 0));
+          let sel = -1;
+          tr.doc.nodesBetween(start, tr.doc.content.size, (node3, pos2) => {
+            if (sel > -1) return false;
+            if (node3.isTextblock && node3.content.size == 0) sel = pos2 + 1;
+          });
+          if (sel > -1) tr.setSelection(TextSelection.near(tr.doc.resolve(sel)));
+          dispatch(tr.scrollIntoView());
+        }
+        return true;
+      }
+      let nextType = $to.pos == $from.end() ? grandParent.contentMatchAt(0).defaultType : null;
+      let tr = state.tr.delete($from.pos, $to.pos);
+      let types2 = nextType ? [itemAttrs ? { type: itemType, attrs: itemAttrs } : null, { type: nextType }] : void 0;
+      if (!canSplit(tr.doc, $from.pos, 2, types2))
+        return false;
+      if (dispatch)
+        dispatch(tr.split($from.pos, 2, types2).scrollIntoView());
+      return true;
+    };
+  }
+  function liftListItem(itemType) {
+    return function(state, dispatch) {
+      let { $from, $to } = state.selection;
+      let range = $from.blockRange($to, (node2) => node2.childCount > 0 && node2.firstChild.type == itemType);
+      if (!range) return false;
+      if (!dispatch) return true;
+      if ($from.node(range.depth - 1).type == itemType)
+        return liftToOuterList(state, dispatch, itemType, range);
+      return liftOutOfList(state, dispatch, range);
+    };
+  }
+  function liftToOuterList(state, dispatch, itemType, range) {
+    let tr = state.tr, end = range.end, endOfList = range.$to.end(range.depth);
+    if (end < endOfList) {
+      tr.step(new ReplaceAroundStep(end - 1, endOfList, end, endOfList, new Slice(Fragment.from(itemType.create(null, range.parent.copy())), 1, 0), 1, true));
+      range = new NodeRange(tr.doc.resolve(range.$from.pos), tr.doc.resolve(endOfList), range.depth);
+    }
+    let target = liftTarget(range);
+    if (target == null) return false;
+    tr.lift(range, target);
+    let $after = tr.doc.resolve(end - 1);
+    if ($after.nodeBefore && $after.nodeBefore.type == itemType && canJoin(tr.doc, end - 1))
+      tr.join(end - 1);
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
+  function liftOutOfList(state, dispatch, range) {
+    let tr = state.tr, list = range.parent;
+    for (let pos2 = range.end, i = range.endIndex - 1, e = range.startIndex; i > e; i--) {
+      pos2 -= list.child(i).nodeSize;
+      tr.delete(pos2 - 1, pos2 + 1);
+    }
+    let $start = tr.doc.resolve(range.start), item = $start.nodeAfter;
+    if (tr.mapping.map(range.end) != range.start + $start.nodeAfter.nodeSize) return false;
+    let atStart = range.startIndex == 0, atEnd = range.endIndex == list.childCount;
+    let parent = $start.node(-1), indexBefore = $start.index(-1);
+    if (!parent.canReplace(indexBefore + (atStart ? 0 : 1), indexBefore + 1, item.content.append(atEnd ? Fragment.empty : Fragment.from(list.copy()))))
+      return false;
+    let start = $start.pos, end = start + item.nodeSize;
+    tr.step(new ReplaceAroundStep(start - (atStart ? 1 : 0), end + (atEnd ? 1 : 0), start + 1, end - 1, new Slice((atStart ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))).append(atEnd ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))), atStart ? 0 : 1, atEnd ? 0 : 1), atStart ? 0 : 1));
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
 
   // src/blazer-markdown-editor.js
   var tNodes = tableNodes({
@@ -31900,6 +31983,67 @@
         }
       }
     });
+  }
+  function splitHeadingCommand(state, dispatch) {
+    const { $from, $to } = state.selection;
+    if (!$from.sameParent($to)) return false;
+    if ($from.parent.type.name !== "heading") return false;
+    if (dispatch) {
+      const atEnd = $from.parentOffset === $from.parent.content.size;
+      const atStart = $from.parentOffset === 0;
+      if (atStart) {
+        const tr2 = state.tr.insert($from.before(), schema2.node("paragraph"));
+        dispatch(tr2.scrollIntoView());
+      } else if (atEnd) {
+        const after = $from.after();
+        const tr2 = state.tr.insert(after, schema2.node("paragraph"));
+        tr2.setSelection(TextSelection.near(tr2.doc.resolve(after + 1)));
+        dispatch(tr2.scrollIntoView());
+      } else {
+        const tr2 = state.tr.split($from.pos);
+        const $new = tr2.doc.resolve(tr2.mapping.map($from.pos, 1));
+        tr2.setNodeMarkup($new.before($new.depth), schema2.nodes.paragraph);
+        dispatch(tr2.scrollIntoView());
+      }
+    }
+    return true;
+  }
+  function tableCellEnterCommand(state, dispatch) {
+    const { $head } = state.selection;
+    let cellDepth = -1;
+    for (let d = $head.depth; d > 0; d--) {
+      const name = $head.node(d).type.name;
+      if (name === "table_cell" || name === "table_header") { cellDepth = d; break; }
+    }
+    if (cellDepth < 0) return false;
+    const prevNode = $head.nodeBefore;
+    const atEnd = $head.parentOffset === $head.parent.content.size;
+    if (atEnd && prevNode && prevNode.type.name === "hard_break") {
+      let tableDepth = -1;
+      for (let d = cellDepth; d > 0; d--) {
+        if ($head.node(d).type.name === "table") { tableDepth = d; break; }
+      }
+      if (tableDepth < 0) return false;
+      if (dispatch) {
+        const tr2 = state.tr;
+        tr2.delete($head.pos - 1, $head.pos);
+        const afterTable = tr2.mapping.map($head.after(tableDepth));
+        tr2.insert(afterTable, schema2.node("paragraph"));
+        tr2.setSelection(TextSelection.near(tr2.doc.resolve(afterTable + 1)));
+        dispatch(tr2.scrollIntoView());
+      }
+      return true;
+    }
+    if (dispatch) {
+      dispatch(state.tr.replaceSelectionWith(schema2.nodes.hard_break.create()).scrollIntoView());
+    }
+    return true;
+  }
+  function compactLineBreak(state, dispatch) {
+    const { $head } = state.selection;
+    if ($head.parent.type.name !== "paragraph") return false;
+    if (dispatch) dispatch(state.tr.insertText("\n"));
+    return true;
   }
   var inlineMarkdownRules = inputRules({ rules: [
     // **bold**
@@ -32205,23 +32349,6 @@
   }
   function codeBlockEscapeKeymap() {
     return keymap({
-      Enter: (state, dispatch) => {
-        const { $head } = state.selection;
-        if ($head.parent.type.name !== "code_block") return false;
-        const codeBlock = $head.parent;
-        const cursorAtEnd = $head.parentOffset === codeBlock.content.size;
-        if (!(cursorAtEnd && codeBlock.textContent.endsWith("\n"))) return false;
-        if (dispatch) {
-          const codeBlockPos = $head.before($head.depth);
-          const tr = state.tr;
-          tr.delete(codeBlockPos + codeBlock.content.size, codeBlockPos + codeBlock.content.size + 1);
-          const afterPos = codeBlockPos + codeBlock.nodeSize - 1;
-          tr.insert(afterPos, schema2.node("paragraph"));
-          tr.setSelection(TextSelection.near(tr.doc.resolve(afterPos + 1)));
-          dispatch(tr);
-        }
-        return true;
-      },
       ArrowDown: (state, dispatch) => {
         const { $head } = state.selection;
         if ($head.parent.type.name !== "code_block") return false;
@@ -32243,16 +32370,6 @@
       }
     });
   }
-  function compactLineBreakKeymap() {
-    return keymap({
-      "Mod-Enter": (state, dispatch) => {
-        const { $head } = state.selection;
-        if ($head.parent.type.name !== "paragraph") return false;
-        if (dispatch) dispatch(state.tr.insertText("\n"));
-        return true;
-      }
-    });
-  }
   function createPlugins() {
     return [
       slashMenuPlugin(),
@@ -32264,12 +32381,20 @@
         "Mod-z": undo,
         "Shift-Mod-z": redo,
         "Mod-y": redo,
-        Enter: chainCommands(newlineInCode, exitCode)
+        "Mod-Enter": chainCommands(exitCode, compactLineBreak),
+        Enter: chainCommands(
+          newlineInCode,
+          tableCellEnterCommand,
+          splitListItem(schema2.nodes.list_item),
+          splitHeadingCommand,
+          createParagraphNear,
+          liftEmptyBlock,
+          splitBlock
+        )
       }),
       keymap(baseKeymap),
       buildBlockInputRules(),
       inlineMarkdownRules,
-      compactLineBreakKeymap(),
       codeBlockEscapeKeymap(),
       columnResizing(),
       tableEditing(),

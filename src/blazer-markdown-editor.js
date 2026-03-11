@@ -35,9 +35,12 @@ import {
   chainCommands,
   exitCode,
   newlineInCode,
+  createParagraphNear,
+  liftEmptyBlock,
+  splitBlock,
   baseKeymap,
 } from "prosemirror-commands";
-import { wrapInList } from "prosemirror-schema-list";
+import { wrapInList, splitListItem, liftListItem } from "prosemirror-schema-list";
 import markdownit from "markdown-it";
 
 const tNodes = tableNodes({
@@ -293,15 +296,80 @@ function tableInputRulePlugin() {
   });
 }
 
-function compactLineBreakKeymap() {
-  return keymap({
-    "Mod-Enter": (state, dispatch) => {
-      const { $head } = state.selection;
-      if ($head.parent.type.name !== "paragraph") return false;
-      if (dispatch) dispatch(state.tr.insertText("\n"));
-      return true;
-    },
-  });
+// ── Enter-key helpers ──
+
+function splitHeadingCommand(state, dispatch) {
+  const { $from, $to } = state.selection;
+  if (!$from.sameParent($to)) return false;
+  if ($from.parent.type.name !== "heading") return false;
+
+  if (dispatch) {
+    const atEnd = $from.parentOffset === $from.parent.content.size;
+    const atStart = $from.parentOffset === 0;
+
+    if (atStart) {
+      // Insert empty paragraph before the heading
+      const tr = state.tr.insert($from.before(), schema.node("paragraph"));
+      dispatch(tr.scrollIntoView());
+    } else if (atEnd) {
+      // Insert empty paragraph after the heading
+      const after = $from.after();
+      const tr = state.tr.insert(after, schema.node("paragraph"));
+      tr.setSelection(TextSelection.near(tr.doc.resolve(after + 1)));
+      dispatch(tr.scrollIntoView());
+    } else {
+      // Split heading; convert the new (second) part to paragraph
+      const tr = state.tr.split($from.pos);
+      const $new = tr.doc.resolve(tr.mapping.map($from.pos, 1));
+      tr.setNodeMarkup($new.before($new.depth), schema.nodes.paragraph);
+      dispatch(tr.scrollIntoView());
+    }
+  }
+  return true;
+}
+
+function tableCellEnterCommand(state, dispatch) {
+  const { $head } = state.selection;
+  let cellDepth = -1;
+  for (let d = $head.depth; d > 0; d--) {
+    const name = $head.node(d).type.name;
+    if (name === "table_cell" || name === "table_header") { cellDepth = d; break; }
+  }
+  if (cellDepth < 0) return false;
+
+  // "Double-enter": cursor at end of paragraph whose last inline node is hard_break → exit table
+  const prevNode = $head.nodeBefore;
+  const atEnd = $head.parentOffset === $head.parent.content.size;
+  if (atEnd && prevNode && prevNode.type.name === "hard_break") {
+    let tableDepth = -1;
+    for (let d = cellDepth; d > 0; d--) {
+      if ($head.node(d).type.name === "table") { tableDepth = d; break; }
+    }
+    if (tableDepth < 0) return false;
+    if (dispatch) {
+      const tr = state.tr;
+      // Remove trailing hard_break
+      tr.delete($head.pos - 1, $head.pos);
+      const afterTable = tr.mapping.map($head.after(tableDepth));
+      tr.insert(afterTable, schema.node("paragraph"));
+      tr.setSelection(TextSelection.near(tr.doc.resolve(afterTable + 1)));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  }
+
+  // Single enter: insert hard_break
+  if (dispatch) {
+    dispatch(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
+  }
+  return true;
+}
+
+function compactLineBreak(state, dispatch) {
+  const { $head } = state.selection;
+  if ($head.parent.type.name !== "paragraph") return false;
+  if (dispatch) dispatch(state.tr.insertText("\n"));
+  return true;
 }
 
 // ── Inline Markdown Input Rules ──
@@ -523,28 +591,9 @@ function slashMenuPlugin() {
   });
 }
 
-// ── Code Block Escape ──
+// ── Code Block Escape (ArrowDown only; Enter stays inside per spec) ──
 function codeBlockEscapeKeymap() {
   return keymap({
-    Enter: (state, dispatch) => {
-      const { $head } = state.selection;
-      if ($head.parent.type.name !== "code_block") return false;
-
-      const codeBlock = $head.parent;
-      const cursorAtEnd = $head.parentOffset === codeBlock.content.size;
-      if (!(cursorAtEnd && codeBlock.textContent.endsWith("\n"))) return false;
-
-      if (dispatch) {
-        const codeBlockPos = $head.before($head.depth);
-        const tr = state.tr;
-        tr.delete(codeBlockPos + codeBlock.content.size, codeBlockPos + codeBlock.content.size + 1);
-        const afterPos = codeBlockPos + codeBlock.nodeSize - 1;
-        tr.insert(afterPos, schema.node("paragraph"));
-        tr.setSelection(TextSelection.near(tr.doc.resolve(afterPos + 1)));
-        dispatch(tr);
-      }
-      return true;
-    },
     ArrowDown: (state, dispatch) => {
       const { $head } = state.selection;
       if ($head.parent.type.name !== "code_block") return false;
@@ -578,12 +627,20 @@ function createPlugins() {
       "Mod-z": undo,
       "Shift-Mod-z": redo,
       "Mod-y": redo,
-      Enter: chainCommands(newlineInCode, exitCode),
+      "Mod-Enter": chainCommands(exitCode, compactLineBreak),
+      Enter: chainCommands(
+        newlineInCode,
+        tableCellEnterCommand,
+        splitListItem(schema.nodes.list_item),
+        splitHeadingCommand,
+        createParagraphNear,
+        liftEmptyBlock,
+        splitBlock,
+      ),
     }),
     keymap(baseKeymap),
     buildBlockInputRules(),
     inlineMarkdownRules,
-    compactLineBreakKeymap(),
     codeBlockEscapeKeymap(),
     columnResizing(),
     tableEditing(),
