@@ -26,10 +26,6 @@
   }
   .ProseMirror:focus { border-color: #999; }
 
-  /* Hide the menu bar that exampleSetup adds */
-  .ProseMirror-menubar-wrapper { border: none !important; }
-  .ProseMirror-menubar { display: none !important; }
-
   /* ── Code view textarea ── */
   #code-view {
     display: none;
@@ -168,9 +164,7 @@
     "prosemirror-inputrules":     "https://esm.sh/*prosemirror-inputrules@1.4.0",
     "prosemirror-dropcursor":     "https://esm.sh/*prosemirror-dropcursor@1.8.1",
     "prosemirror-gapcursor":      "https://esm.sh/*prosemirror-gapcursor@1.3.2",
-    "prosemirror-menu":           "https://esm.sh/*prosemirror-menu@1.2.4",
     "prosemirror-markdown":       "https://esm.sh/*prosemirror-markdown@1.13.2",
-    "prosemirror-example-setup":  "https://esm.sh/*prosemirror-example-setup@1.2.3",
     "prosemirror-tables":         "https://esm.sh/*prosemirror-tables@1.8.3",
     "orderedmap":                 "https://esm.sh/*orderedmap@2.1.1",
     "rope-sequence":              "https://esm.sh/*rope-sequence@1.3.4",
@@ -220,23 +214,25 @@ import { EditorState, Plugin, PluginKey,
          Selection, TextSelection }        from "prosemirror-state";
 import { EditorView }                      from "prosemirror-view";
 import { keymap }                          from "prosemirror-keymap";
+import { history, undo, redo }             from "prosemirror-history";
 import { InputRule, inputRules,
          wrappingInputRule, textblockTypeInputRule }
                                                from "prosemirror-inputrules";
+import { dropCursor }                      from "prosemirror-dropcursor";
+import { gapCursor }                       from "prosemirror-gapcursor";
 import {
   schema as mdSchema,
   defaultMarkdownSerializer,
   MarkdownSerializer
 } from "prosemirror-markdown";
-import { exampleSetup, buildInputRules }
-                           from "prosemirror-example-setup";
 import {
   tableNodes, columnResizing, tableEditing, goToNextCell,
   addColumnAfter, addColumnBefore, deleteColumn,
   addRowAfter, addRowBefore, deleteRow, deleteTable
 } from "prosemirror-tables";
 import { setBlockType, wrapIn, chainCommands,
-         exitCode, newlineInCode }         from "prosemirror-commands";
+         exitCode, newlineInCode,
+         baseKeymap }                      from "prosemirror-commands";
 import { wrapInList }                      from "prosemirror-schema-list";
 import markdownit                          from "markdown-it";
 
@@ -874,21 +870,7 @@ Type \`/\` at the start of a line to open the **slash command menu**!
 
 const initialDoc = parseMarkdown(initialMarkdown);
 
-// exampleSetup gives us keymaps, history, gapcursor, dropcursor, etc.
-// But its inputRules plugin includes emDash/ellipsis/smartQuotes which
-// convert -- to — and break table separator typing. We filter it out
-// and supply our own block-level input rules without smart typography.
-const setupPlugins = exampleSetup({ schema: mySchema, menuBar: false });
-
-// The inputRules plugin from exampleSetup uses a known plugin key.
-// Filter it out by checking for the "inputRules$" key name.
-const filteredSetup = setupPlugins.filter(p => {
-  const keyName = p.spec && p.spec.key && p.spec.key.key;
-  // The inputRules plugin has key "inputRules$"
-  return keyName !== "inputRules$";
-});
-
-// Rebuild block-level input rules WITHOUT smart typography
+// Build block-level markdown input rules without smart typography
 function buildBlockInputRules(schema) {
   const rules = [];
   if (schema.nodes.blockquote) rules.push(wrappingInputRule(/^\s*>\s$/, schema.nodes.blockquote));
@@ -899,6 +881,9 @@ function buildBlockInputRules(schema) {
   ));
   if (schema.nodes.bullet_list) rules.push(wrappingInputRule(/^\s*([-+*])\s$/, schema.nodes.bullet_list));
   if (schema.nodes.code_block) rules.push(textblockTypeInputRule(/^```$/, schema.nodes.code_block));
+  if (schema.nodes.horizontal_rule) rules.push(new InputRule(/^---$/, (state, _m, start, end) =>
+    state.tr.replaceWith(start - 1, end, schema.nodes.horizontal_rule.create())
+  ));
   if (schema.nodes.heading) rules.push(textblockTypeInputRule(
     /^(#{1,6})\s$/, schema.nodes.heading, match => ({ level: match[1].length })
   ));
@@ -907,7 +892,16 @@ function buildBlockInputRules(schema) {
 
 const plugins = [
   slashMenuPlugin(),   // MUST be first — its Enter handler needs priority when menu is open
-  ...filteredSetup,
+  history(),
+  dropCursor(),
+  gapCursor(),
+  keymap({
+    "Mod-z": undo,
+    "Shift-Mod-z": redo,
+    "Mod-y": redo,
+    "Enter": chainCommands(newlineInCode, exitCode)
+  }),
+  keymap(baseKeymap),
   buildBlockInputRules(mySchema),
   inlineMarkdownRules,
   codeBlockEscapeKeymap(),
