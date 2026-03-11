@@ -44,11 +44,8 @@ JSInterop API:
 - `window.blazerMarkdownEditor.focus(editorId)`
 - `window.blazerMarkdownEditor.destroy(editorId)`
 
-## Release process (artifact-only)
 
-Create a GitHub release with only the `wwwroot` files for that version.
-
-Suggested release assets:
+Required assets:
 
 - `wwwroot/blazer-markdown-editor.js`
 - `wwwroot/blazer-markdown-editor.min.js`

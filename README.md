@@ -1,18 +1,15 @@
 # Blazer Markdown Editor
-A lightweight ProseMirror-based Markdown editor for Blazor (including MudBlazor) with slash commands, table editing, and JSInterop-friendly APIs.
+A lightweight (<550kb) ProseMirror-based javascript Markdown editor with slash commands, table editing, and JSInterop-friendly APIs. Developed as I needed a WYSIWYG markdown editor for Blazor but all I could find was react and vue components. Can be used standalone or authored into component for Blazor. Check the demo https://iamdabe.github.io/codex/  
 
 ## Contents
 - **[Features](#features)**
 - **[Preview](#preview)**
-  - [Desktop](#desktop)
-  - [Mobile](#mobile)
 - **[Install](#install)**
-  - [Install Method 1](#install-method-1)
 - **[Third-Party](#third-party)**
 
 Additional docs:
-- [JSInterop Packaging](docs/jsinterop-packaging.md)
-- [How to Use](docs/how-to-use.md)
+- [JSInterop Packaging](./docs/jsinterop-packaging.md)
+- [How to Use](./docs/how-to-use.md)
 
 ## Features
 * Markdown-first authoring with ProseMirror document model and serializer
@@ -20,14 +17,20 @@ Additional docs:
 * Productive editing features: slash menu, table controls, link toolbar, and keyboard shortcuts
 
 ## Preview
-### Desktop
-Use `samples/index.html` to preview editor behavior in desktop browsers.
 
-### Mobile
-Use device emulation (or a real device) with `samples/index.html` to validate responsive behavior and touch interactions.
+<div style="display:flex; flex-wrap:wrap; gap:15px;">
+
+<a href="./docs/preview.png">
+  <img src="./docs/preview.png" alt="Preview" width="300">
+</a>
+
+<a href="./docs/slash-menu.png">
+  <img src="./docs/slash-menu.png" alt="Slash Menu" width="300">
+</a>
+</div>
+
 
 ## Install
-### Install Method 1
 1. Install dependencies:
    - `npm ci`
 2. Build distributable assets:

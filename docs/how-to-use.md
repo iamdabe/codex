@@ -31,5 +31,4 @@ Use the global object:
 
 ## Notes
 - Keep `wwwroot` outputs as release artifacts (`js`, `min.js`, `css`).
-- Keep dependency versions pinned for deterministic behavior.
 - Use the packaging guidance in [jsinterop-packaging.md](jsinterop-packaging.md).
