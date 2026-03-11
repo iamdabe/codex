@@ -1,6 +1,7 @@
 // Copyright (c) 2026 David Walker
 // Licensed under the MIT License.
 
+
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -31621,8 +31622,8 @@
   }
   function splitListItem(itemType, itemAttrs) {
     return function(state, dispatch) {
-      let { $from, $to, node: node2 } = state.selection;
-      if (node2 && node2.isBlock || $from.depth < 2 || !$from.sameParent($to))
+      let { $from, $to, node } = state.selection;
+      if (node && node.isBlock || $from.depth < 2 || !$from.sameParent($to))
         return false;
       let grandParent = $from.node(-1);
       if (grandParent.type != itemType)
@@ -31637,70 +31638,30 @@
             wrap2 = Fragment.from($from.node(d).copy(wrap2));
           let depthAfter = $from.indexAfter(-1) < $from.node(-2).childCount ? 1 : $from.indexAfter(-2) < $from.node(-3).childCount ? 2 : 3;
           wrap2 = wrap2.append(Fragment.from(itemType.createAndFill()));
-          let start = $from.before($from.depth - (depthBefore - 1)), end = $from.after($from.depth - (depthAfter - 1));
-          let tr = state.tr.replace(start, end, new Slice(wrap2, 4 - depthBefore, 0));
+          let start = $from.before($from.depth - (depthBefore - 1));
+          let tr2 = state.tr.replace(start, $from.after(-depthAfter), new Slice(wrap2, 4 - depthBefore, 0));
           let sel = -1;
-          tr.doc.nodesBetween(start, tr.doc.content.size, (node3, pos2) => {
-            if (sel > -1) return false;
-            if (node3.isTextblock && node3.content.size == 0) sel = pos2 + 1;
+          tr2.doc.nodesBetween(start, tr2.doc.content.size, (node2, pos) => {
+            if (sel > -1)
+              return false;
+            if (node2.isTextblock && node2.content.size == 0)
+              sel = pos + 1;
           });
-          if (sel > -1) tr.setSelection(TextSelection.near(tr.doc.resolve(sel)));
-          dispatch(tr.scrollIntoView());
+          if (sel > -1)
+            tr2.setSelection(Selection.near(tr2.doc.resolve(sel)));
+          dispatch(tr2.scrollIntoView());
         }
         return true;
       }
       let nextType = $to.pos == $from.end() ? grandParent.contentMatchAt(0).defaultType : null;
       let tr = state.tr.delete($from.pos, $to.pos);
-      let types2 = nextType ? [itemAttrs ? { type: itemType, attrs: itemAttrs } : null, { type: nextType }] : void 0;
-      if (!canSplit(tr.doc, $from.pos, 2, types2))
+      let types = nextType ? [itemAttrs ? { type: itemType, attrs: itemAttrs } : null, { type: nextType }] : void 0;
+      if (!canSplit(tr.doc, $from.pos, 2, types))
         return false;
       if (dispatch)
-        dispatch(tr.split($from.pos, 2, types2).scrollIntoView());
+        dispatch(tr.split($from.pos, 2, types).scrollIntoView());
       return true;
     };
-  }
-  function liftListItem(itemType) {
-    return function(state, dispatch) {
-      let { $from, $to } = state.selection;
-      let range = $from.blockRange($to, (node2) => node2.childCount > 0 && node2.firstChild.type == itemType);
-      if (!range) return false;
-      if (!dispatch) return true;
-      if ($from.node(range.depth - 1).type == itemType)
-        return liftToOuterList(state, dispatch, itemType, range);
-      return liftOutOfList(state, dispatch, range);
-    };
-  }
-  function liftToOuterList(state, dispatch, itemType, range) {
-    let tr = state.tr, end = range.end, endOfList = range.$to.end(range.depth);
-    if (end < endOfList) {
-      tr.step(new ReplaceAroundStep(end - 1, endOfList, end, endOfList, new Slice(Fragment.from(itemType.create(null, range.parent.copy())), 1, 0), 1, true));
-      range = new NodeRange(tr.doc.resolve(range.$from.pos), tr.doc.resolve(endOfList), range.depth);
-    }
-    let target = liftTarget(range);
-    if (target == null) return false;
-    tr.lift(range, target);
-    let $after = tr.doc.resolve(end - 1);
-    if ($after.nodeBefore && $after.nodeBefore.type == itemType && canJoin(tr.doc, end - 1))
-      tr.join(end - 1);
-    dispatch(tr.scrollIntoView());
-    return true;
-  }
-  function liftOutOfList(state, dispatch, range) {
-    let tr = state.tr, list = range.parent;
-    for (let pos2 = range.end, i = range.endIndex - 1, e = range.startIndex; i > e; i--) {
-      pos2 -= list.child(i).nodeSize;
-      tr.delete(pos2 - 1, pos2 + 1);
-    }
-    let $start = tr.doc.resolve(range.start), item = $start.nodeAfter;
-    if (tr.mapping.map(range.end) != range.start + $start.nodeAfter.nodeSize) return false;
-    let atStart = range.startIndex == 0, atEnd = range.endIndex == list.childCount;
-    let parent = $start.node(-1), indexBefore = $start.index(-1);
-    if (!parent.canReplace(indexBefore + (atStart ? 0 : 1), indexBefore + 1, item.content.append(atEnd ? Fragment.empty : Fragment.from(list.copy()))))
-      return false;
-    let start = $start.pos, end = start + item.nodeSize;
-    tr.step(new ReplaceAroundStep(start - (atStart ? 1 : 0), end + (atEnd ? 1 : 0), start + 1, end - 1, new Slice((atStart ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))).append(atEnd ? Fragment.empty : Fragment.from(list.copy(Fragment.empty))), atStart ? 0 : 1, atEnd ? 0 : 1), atStart ? 0 : 1));
-    dispatch(tr.scrollIntoView());
-    return true;
   }
 
   // src/blazer-markdown-editor.js
@@ -31937,22 +31898,22 @@
     }
     function findTableMarkdownRange(state) {
       const { $head } = state.selection;
-      const paragraph = $head.parent;
-      if (paragraph.type.name !== "paragraph") return null;
+      const paragraph2 = $head.parent;
+      if (paragraph2.type.name !== "paragraph") return null;
       const paragraphDepth = $head.depth;
       const paragraphFrom = $head.before(paragraphDepth);
       const paragraphTo = $head.after(paragraphDepth);
-      const text2 = paragraph.textContent;
+      const text2 = paragraph2.textContent;
       const lines = text2.split("\n");
       if (lines.length === 2) {
-        const headerCells = parseHeaderCells(lines[0]);
-        const separatorCells = parseSeparatorCells(lines[1]);
-        if (!headerCells || !separatorCells || separatorCells.length !== headerCells.length) return null;
+        const headerCells2 = parseHeaderCells(lines[0]);
+        const separatorCells2 = parseSeparatorCells(lines[1]);
+        if (!headerCells2 || !separatorCells2 || separatorCells2.length !== headerCells2.length) return null;
         return {
           from: paragraphFrom,
           to: paragraphTo,
-          headerCells,
-          aligns: getAlignments(separatorCells)
+          headerCells: headerCells2,
+          aligns: getAlignments(separatorCells2)
         };
       }
       const containerDepth = paragraphDepth - 1;
@@ -31998,18 +31959,18 @@
       const atEnd = $from.parentOffset === $from.parent.content.size;
       const atStart = $from.parentOffset === 0;
       if (atStart) {
-        const tr2 = state.tr.insert($from.before(), schema2.node("paragraph"));
-        dispatch(tr2.scrollIntoView());
+        const tr = state.tr.insert($from.before(), schema2.node("paragraph"));
+        dispatch(tr.scrollIntoView());
       } else if (atEnd) {
         const after = $from.after();
-        const tr2 = state.tr.insert(after, schema2.node("paragraph"));
-        tr2.setSelection(TextSelection.near(tr2.doc.resolve(after + 1)));
-        dispatch(tr2.scrollIntoView());
+        const tr = state.tr.insert(after, schema2.node("paragraph"));
+        tr.setSelection(TextSelection.near(tr.doc.resolve(after + 1)));
+        dispatch(tr.scrollIntoView());
       } else {
-        const tr2 = state.tr.split($from.pos);
-        const $new = tr2.doc.resolve(tr2.mapping.map($from.pos, 1));
-        tr2.setNodeMarkup($new.before($new.depth), schema2.nodes.paragraph);
-        dispatch(tr2.scrollIntoView());
+        const tr = state.tr.split($from.pos);
+        const $new = tr.doc.resolve(tr.mapping.map($from.pos, 1));
+        tr.setNodeMarkup($new.before($new.depth), schema2.nodes.paragraph);
+        dispatch(tr.scrollIntoView());
       }
     }
     return true;
@@ -32019,7 +31980,10 @@
     let cellDepth = -1;
     for (let d = $head.depth; d > 0; d--) {
       const name = $head.node(d).type.name;
-      if (name === "table_cell" || name === "table_header") { cellDepth = d; break; }
+      if (name === "table_cell" || name === "table_header") {
+        cellDepth = d;
+        break;
+      }
     }
     if (cellDepth < 0) return false;
     const prevNode = $head.nodeBefore;
@@ -32027,16 +31991,19 @@
     if (atEnd && prevNode && prevNode.type.name === "hard_break") {
       let tableDepth = -1;
       for (let d = cellDepth; d > 0; d--) {
-        if ($head.node(d).type.name === "table") { tableDepth = d; break; }
+        if ($head.node(d).type.name === "table") {
+          tableDepth = d;
+          break;
+        }
       }
       if (tableDepth < 0) return false;
       if (dispatch) {
-        const tr2 = state.tr;
-        tr2.delete($head.pos - 1, $head.pos);
-        const afterTable = tr2.mapping.map($head.after(tableDepth));
-        tr2.insert(afterTable, schema2.node("paragraph"));
-        tr2.setSelection(TextSelection.near(tr2.doc.resolve(afterTable + 1)));
-        dispatch(tr2.scrollIntoView());
+        const tr = state.tr;
+        tr.delete($head.pos - 1, $head.pos);
+        const afterTable = tr.mapping.map($head.after(tableDepth));
+        tr.insert(afterTable, schema2.node("paragraph"));
+        tr.setSelection(TextSelection.near(tr.doc.resolve(afterTable + 1)));
+        dispatch(tr.scrollIntoView());
       }
       return true;
     }
@@ -32140,7 +32107,8 @@
         return;
       }
       const $h = view.state.selection.$head;
-      let inTbl = false, tblDom = null;
+      let inTbl = false;
+      let tblDom = null;
       for (let d = $h.depth; d > 0; d--) {
         if ($h.node(d).type.name === "table") {
           inTbl = true;
@@ -32202,16 +32170,16 @@
         const { $from } = selection;
         const marks = $from.marks();
         const direct = marks.find((m) => m.type === linkMarkType);
-        if ((direct == null ? void 0 : direct.attrs) && direct.attrs.href) return direct.attrs.href;
+        if (direct?.attrs?.href) return direct.attrs.href;
         const before = $from.nodeBefore;
-        if (before == null ? void 0 : before.marks) {
+        if (before?.marks) {
           const m = before.marks.find((mark) => mark.type === linkMarkType);
-          if ((m == null ? void 0 : m.attrs) && m.attrs.href) return m.attrs.href;
+          if (m?.attrs?.href) return m.attrs.href;
         }
         const after = $from.nodeAfter;
-        if (after == null ? void 0 : after.marks) {
+        if (after?.marks) {
           const m = after.marks.find((mark) => mark.type === linkMarkType);
-          if ((m == null ? void 0 : m.attrs) && m.attrs.href) return m.attrs.href;
+          if (m?.attrs?.href) return m.attrs.href;
         }
         return null;
       }
@@ -32219,7 +32187,7 @@
       state.doc.nodesBetween(selection.from, selection.to, (node) => {
         if (!node.isText || !node.marks || href) return;
         const mark = node.marks.find((m) => m.type === linkMarkType);
-        if ((mark == null ? void 0 : mark.attrs) && mark.attrs.href) href = mark.attrs.href;
+        if (mark?.attrs?.href) href = mark.attrs.href;
       });
       return href;
     }
