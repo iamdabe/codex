@@ -44,9 +44,9 @@ jobs:
 
           # Copy explicitly known build outputs.
           mkdir -p _site/wwwroot
-          cp wwwroot/blazer-markdown-editor.css _site/wwwroot/blazer-markdown-editor.css
-          cp wwwroot/blazer-markdown-editor.js _site/wwwroot/blazer-markdown-editor.js
-          cp wwwroot/blazer-markdown-editor.js.map _site/wwwroot/blazer-markdown-editor.js.map
+          cp wwwroot/blazor-markdown-editor.css _site/wwwroot/blazor-markdown-editor.css
+          cp wwwroot/blazor-markdown-editor.js _site/wwwroot/blazor-markdown-editor.js
+          cp wwwroot/blazor-markdown-editor.js.map _site/wwwroot/blazor-markdown-editor.js.map
 
           # Copy any additional local src/href references used by the sample.
           grep -Eo '(src|href)="[^"]+"' _site/index.html \
