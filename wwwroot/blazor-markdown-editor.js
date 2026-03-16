@@ -32046,6 +32046,11 @@
     if (tableContext?.rowIndex === 0) return false;
     return addRowBefore(state, dispatch);
   }
+  function deleteRowIfAllowed(state, dispatch) {
+    const tableContext = getActiveTableContext(state);
+    if (tableContext?.rowIndex === 0) return false;
+    return deleteRow(state, dispatch);
+  }
   var inlineMarkdownRules = inputRules({ rules: [
     // **bold**
     new InputRule(/\*\*([^\s*](?:[^*]*[^\s*])?)\*\*$/, (state, match2, start, end) => {
@@ -32122,7 +32127,7 @@
       deleteColumn,
       addRowBefore: addRowBeforeIfAllowed,
       addRowAfter,
-      deleteRow,
+      deleteRow: deleteRowIfAllowed,
       deleteTable
     };
     function updateButtonStates(state) {

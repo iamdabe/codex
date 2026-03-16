@@ -407,6 +407,12 @@ function addRowBeforeIfAllowed(state, dispatch) {
   return addRowBefore(state, dispatch);
 }
 
+function deleteRowIfAllowed(state, dispatch) {
+  const tableContext = getActiveTableContext(state);
+  if (tableContext?.rowIndex === 0) return false;
+  return deleteRow(state, dispatch);
+}
+
 // ── Inline Markdown Input Rules ──
 const inlineMarkdownRules = inputRules({ rules: [
   // **bold**
@@ -493,7 +499,7 @@ function tableToolbarPlugin() {
     return el;
   }
   const cmds = { addColumnBefore, addColumnAfter, deleteColumn,
-                 addRowBefore: addRowBeforeIfAllowed, addRowAfter, deleteRow, deleteTable };
+                 addRowBefore: addRowBeforeIfAllowed, addRowAfter, deleteRow: deleteRowIfAllowed, deleteTable };
 
   function updateButtonStates(state) {
     if (!toolbarEl) return;
