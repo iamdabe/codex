@@ -378,6 +378,29 @@ function compactLineBreak(state, dispatch) {
   return true;
 }
 
+function codeBlockDoubleEnterExitCommand(state, dispatch) {
+  const { selection } = state;
+  if (!selection.empty) return false;
+
+  const { $head } = selection;
+  if ($head.parent.type.name !== "code_block") return false;
+  if ($head.parentOffset !== $head.parent.content.size) return false;
+
+  // If the code block ends in a newline, Enter was already pressed once on an empty line.
+  const text = $head.parent.textContent;
+  if (!text.endsWith("\n")) return false;
+
+  if (dispatch) {
+    const tr = state.tr;
+    tr.delete($head.pos - 1, $head.pos);
+    const afterCodeBlock = tr.mapping.map($head.after($head.depth));
+    tr.insert(afterCodeBlock, schema.node("paragraph"));
+    tr.setSelection(TextSelection.near(tr.doc.resolve(afterCodeBlock + 1)));
+    dispatch(tr.scrollIntoView());
+  }
+  return true;
+}
+
 function getActiveTableContext(state) {
   const { $head } = state.selection;
   let tableDepth = -1;
@@ -777,7 +800,7 @@ function slashMenuPlugin() {
   });
 }
 
-// ── Code Block Escape (ArrowDown only; Enter stays inside per spec) ──
+// ── Code Block Escape (ArrowDown navigation) ──
 function codeBlockEscapeKeymap() {
   return keymap({
     ArrowDown: (state, dispatch) => {
@@ -816,6 +839,7 @@ function createPlugins() {
       "Mod-Enter": compactLineBreak,
       "Shift-Enter": compactLineBreak,
       Enter: chainCommands(
+        codeBlockDoubleEnterExitCommand,
         newlineInCode,
         tableCellEnterCommand,
         splitListItem(schema.nodes.list_item),

@@ -32022,6 +32022,24 @@
     if (dispatch) dispatch(state.tr.replaceSelectionWith(schema2.nodes.hard_break.create()).scrollIntoView());
     return true;
   }
+  function codeBlockDoubleEnterExitCommand(state, dispatch) {
+    const { selection } = state;
+    if (!selection.empty) return false;
+    const { $head } = selection;
+    if ($head.parent.type.name !== "code_block") return false;
+    if ($head.parentOffset !== $head.parent.content.size) return false;
+    const text2 = $head.parent.textContent;
+    if (!text2.endsWith("\n")) return false;
+    if (dispatch) {
+      const tr = state.tr;
+      tr.delete($head.pos - 1, $head.pos);
+      const afterCodeBlock = tr.mapping.map($head.after($head.depth));
+      tr.insert(afterCodeBlock, schema2.node("paragraph"));
+      tr.setSelection(TextSelection.near(tr.doc.resolve(afterCodeBlock + 1)));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  }
   function getActiveTableContext(state) {
     const { $head } = state.selection;
     let tableDepth = -1;
@@ -32510,6 +32528,7 @@
         "Mod-Enter": compactLineBreak,
         "Shift-Enter": compactLineBreak,
         Enter: chainCommands(
+          codeBlockDoubleEnterExitCommand,
           newlineInCode,
           tableCellEnterCommand,
           splitListItem(schema2.nodes.list_item),
